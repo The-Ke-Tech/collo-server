@@ -85,7 +85,7 @@ export async function initiateMpesaStkPush(payload: StkPushPayload) {
         TransactionType: "CustomerBuyGoodsOnline",
         Amount: amount,
         PartyA: normalizedPhone,
-        PartyB: 3498900,
+        PartyB: 5692318,
         PhoneNumber: normalizedPhone,
         CallBackURL: callbackUrl,
         AccountReference: accountReference,
