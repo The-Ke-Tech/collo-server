@@ -54,6 +54,8 @@ app.use(
       "http://192.168.0.103:3000",
       "https://www.colltechhub.com",
       "https://colltechhub.com",
+      "https://colltechhub.vercel.app",
+      "https://www.colltechhub.vercel.app",
     ],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
