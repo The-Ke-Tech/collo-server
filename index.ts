@@ -6,7 +6,7 @@ import jwt, { JwtPayload } from "jsonwebtoken";
 import mongoose from "mongoose";
 import Redis from "ioredis";
 import slugify from "slugify";
-
+import cookieParser from "cookie-parser";
 
 import {
   OTP_TTL_SECONDS,
@@ -22,75 +22,93 @@ import {
   ContactFormData,
   resetKey,
 } from "./utils/auth";
-import cookieParser from "cookie-parser";
 
-// Mongoose models (make sure these files exist)
+// Mongoose models
 import User, { IUser } from "./models/user.model";
-
-import { authMiddleware, AuthRequest } from "./middleware";
-import { generateAccessToken, generateRefreshToken } from "./utils/tokens";
 import Product from "./models/product.model";
 import CartItem from "./models/cart.model";
 import Banner from "./models/banner.model";
 import Order, { PaymentStatus, ShippingStage } from "./models/order.model";
 import OrderProduct, { IOrderProduct } from "./models/orderProduct.model";
+import Service from "./models/service.model";
+
+// Middleware & utils
+import { authMiddleware, AuthRequest } from "./middleware";
+import { generateAccessToken, generateRefreshToken } from "./utils/tokens";
 import { initiateMpesaStkPush } from "./utils/mpesa";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
-import Service from "./models/service.model";
 import { colltechHubChatbot, handoverToAgent } from "./utils/bot";
 
 dotenv.config();
 
+// ----------------------
+// App Initialization
+// ----------------------
 const app = express();
-app.use(cookieParser());
 
-// ✅ Use CORS middleware
+// ----------------------
+// CORS CONFIG (FIXED)
+// ----------------------
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://192.168.1.106:3000",
+  "http://10.216.235.76:3000",
+  "http://192.168.0.103:3000",
+  "https://www.colltechhub.com",
+  "https://colltechhub.com",
+  "https://colltechhub.vercel.app",
+  "https://www.colltechhub.vercel.app",
+];
+
 app.use(
   cors({
-    origin: [
-      "http://localhost:3000",
-      "http://192.168.1.106:3000",
-      "http://10.216.235.76:3000",
-      "http://192.168.0.103:3000",
-      "https://www.colltechhub.com",
-      "https://colltechhub.com",
-      "https://colltechhub.vercel.app",
-      "https://www.colltechhub.vercel.app",
-    ],
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true); // allow server-to-server
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      callback(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true,
   })
 );
 
+// Allow preflight requests
+app.options("*", cors());
+
+// ----------------------
+// Global Middleware
+// ----------------------
+app.use(cookieParser());
 app.use(express.json());
 
-// Redis
+// ----------------------
+// Redis Setup
+// ----------------------
 const redis = new Redis(process.env.REDIS_URL!);
 const WHATSAPP_ACCESS_TOKEN = process.env.WHATSAPP_TOKEN;
 const WHATSAPP_PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
-const JWT_SECRET = process.env.JWT_SECRET!
+const JWT_SECRET = process.env.JWT_SECRET!;
 
 // ----------------------
-// DB & Redis Connection Test (Mongoose)
+// DB & Redis Connection Test
 // ----------------------
 async function testConnections() {
   try {
-    // Connect to MongoDB
     const mongoUri = process.env.MONGO_URI!;
     if (!mongoUri) {
       console.error("❌ MONGO_URI not set in env");
       process.exit(1);
     }
 
-    await mongoose.connect(mongoUri, {
-      // useNewUrlParser and useUnifiedTopology are default in modern mongoose, but add options as needed
-    });
+    await mongoose.connect(mongoUri);
     console.log("✅ MongoDB connected successfully");
 
-    // Test Redis
     await redis.set("test-connection", "ok", "EX", 5);
     const ping = await redis.get("test-connection");
+
     if (ping === "ok") {
       console.log("✅ Redis connected successfully");
     } else {
@@ -103,77 +121,116 @@ async function testConnections() {
   }
 }
 
-
 // ===============================
-// REGISTER
+// AUTH ROUTES
+// ===============================
+
 // ----------------- SIGNUP -----------------
-app.post("/api/auth/signup", async (req, res) => {
+app.post("/api/auth/signup", async (req: Request, res: Response) => {
   try {
     const { name, email, phone, password } = req.body;
-    if (!name || !email || !phone || !password)
-      return res.status(400).json({ success: false, message: "All fields are required" });
+
+    if (!name || !email || !phone || !password) {
+      return res
+        .status(400)
+        .json({ success: false, message: "All fields are required" });
+    }
 
     const normalizedPhone = normalizePhone(phone);
 
-    // Check if email or phone already exists in MongoDB
-    const existingUser = await User.findOne({ $or: [{ email }, { phone: normalizedPhone }] });
-    if (existingUser)
-      return res.status(400).json({ success: false, message: "Email or phone already registered" });
+    const existingUser = await User.findOne({
+      $or: [{ email }, { phone: normalizedPhone }],
+    });
 
-    // Generate OTP and store temporary registration data in Redis
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: "Email or phone already registered",
+      });
+    }
+
     const otp = generateOtp();
-    const key = regKey(email, normalizedPhone); // unique Redis key per email + phone
+    const key = regKey(email, normalizedPhone);
 
-    await redis.set(key, JSON.stringify({ name, email, phone: normalizedPhone, password }), "EX", OTP_TTL_SECONDS);
+    await redis.set(
+      key,
+      JSON.stringify({ name, email, phone: normalizedPhone, password }),
+      "EX",
+      OTP_TTL_SECONDS
+    );
+
     await redis.set(`${key}:otp`, otp, "EX", OTP_TTL_SECONDS);
 
-    // Send OTP via WhatsApp and Email
     await sendWhatsappOtp(normalizedPhone, otp);
     await sendEmailOtp(email, otp);
 
-    return res.json({ success: true, message: "OTP sent to WhatsApp and Email. Verify to complete registration." });
-  } catch (error: any) {
+    return res.json({
+      success: true,
+      message: "OTP sent to WhatsApp and Email. Verify to complete registration.",
+    });
+  } catch (error) {
     console.error("Signup error:", error);
-    return res.status(500).json({ success: false, message: "Server error" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Server error" });
   }
 });
 
 // ----------------- VERIFY OTP -----------------
-app.post("/api/auth/verify-otp", async (req, res) => {
+app.post("/api/auth/verify-otp", async (req: Request, res: Response) => {
   try {
     const { email, phone, otp } = req.body;
-    if (!email || !phone || !otp)
-      return res.status(400).json({ success: false, message: "All fields are required" });
+
+    if (!email || !phone || !otp) {
+      return res
+        .status(400)
+        .json({ success: false, message: "All fields are required" });
+    }
 
     const normalizedPhone = normalizePhone(phone);
     const key = regKey(email, normalizedPhone);
 
-    // Check OTP
     const storedOtp = await redis.get(`${key}:otp`);
-    if (!storedOtp || storedOtp !== otp)
-      return res.status(400).json({ success: false, message: "Invalid or expired OTP" });
+    if (!storedOtp || storedOtp !== otp) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid or expired OTP" });
+    }
 
-    // Retrieve temporary registration data
     const tempUserData = await redis.get(key);
-    if (!tempUserData)
-      return res.status(400).json({ success: false, message: "User data expired. Register again." });
+    if (!tempUserData) {
+      return res.status(400).json({
+        success: false,
+        message: "User data expired. Register again.",
+      });
+    }
 
     const { name, password } = JSON.parse(tempUserData);
 
-    // Save to MongoDB
-    const user = new User({ name, email, phone: normalizedPhone, password });
+    const user = new User({
+      name,
+      email,
+      phone: normalizedPhone,
+      password,
+    });
+
     await user.save();
 
-    // Cleanup Redis
     await redis.del(key);
     await redis.del(`${key}:otp`);
 
-    return res.json({ success: true, message: "Account verified and created successfully." });
-  } catch (error: any) {
+    return res.json({
+      success: true,
+      message: "Account verified and created successfully.",
+    });
+  } catch (error) {
     console.error("Verify OTP error:", error);
-    return res.status(500).json({ success: false, message: "Server error" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Server error" });
   }
 });
+
 
 // ----------------- RESEND SIGNUP OTP -----------------
 app.post("/api/auth/resend-otp", async (req: Request, res: Response) => {
