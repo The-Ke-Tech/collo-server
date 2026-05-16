@@ -8,10 +8,14 @@ exports.generateRefreshToken = exports.generateAccessToken = void 0;
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const JWT_SECRET = process.env.JWT_SECRET;
 const generateAccessToken = (payload) => {
-    return jsonwebtoken_1.default.sign(payload, JWT_SECRET, { expiresIn: "40m" });
+    return jsonwebtoken_1.default.sign(payload, JWT_SECRET, {
+        expiresIn: "6h",
+    });
 };
 exports.generateAccessToken = generateAccessToken;
 const generateRefreshToken = (payload) => {
-    return jsonwebtoken_1.default.sign(payload, JWT_SECRET, { expiresIn: "7d" });
+    return jsonwebtoken_1.default.sign(payload, JWT_SECRET, {
+        expiresIn: "7d",
+    });
 };
 exports.generateRefreshToken = generateRefreshToken;
