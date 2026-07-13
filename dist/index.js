@@ -426,7 +426,7 @@ app.post("/api/auth/refresh", (req, res) => {
     }
 });
 // ----------------- CREATE PRODUCT -----------------
-app.post("/api/products", (0, middleware_1.authMiddleware)(["admin"]), async (req, res) => {
+app.post("/api/products", (0, middleware_1.authMiddleware)(["admin", "super-admin"]), async (req, res) => {
     try {
         const { productName, brandName, category, productImage, description, price, sellingPrice, stock, } = req.body;
         // 🔐 user comes from token, NOT client
@@ -774,7 +774,7 @@ app.get("/api/category-service", async (req, res) => {
     }
 });
 // ----------------- CREATE SERVICE -----------------
-app.post("/api/services", (0, middleware_1.authMiddleware)(["admin"]), async (req, res) => {
+app.post("/api/services", (0, middleware_1.authMiddleware)(["admin", "super-admin"]), async (req, res) => {
     try {
         const { serviceName, category, serviceImage, description, price, startingFrom, pricingType, unitLabel, } = req.body;
         const createdBy = req.user.id;
@@ -860,7 +860,7 @@ app.get("/api/services/:id", async (req, res) => {
     }
 });
 // ----------------- UPDATE SERVICE -----------------
-app.patch("/api/services/:id", (0, middleware_1.authMiddleware)(["admin"]), async (req, res) => {
+app.patch("/api/services/:id", (0, middleware_1.authMiddleware)(["admin", "super-admin"]), async (req, res) => {
     try {
         const { id } = req.params;
         if (!mongoose_1.default.Types.ObjectId.isValid(id)) {
@@ -878,7 +878,7 @@ app.patch("/api/services/:id", (0, middleware_1.authMiddleware)(["admin"]), asyn
     }
 });
 // ----------------- DELETE SERVICE -----------------
-app.delete("/api/services/:id", (0, middleware_1.authMiddleware)(["admin"]), async (req, res) => {
+app.delete("/api/services/:id", (0, middleware_1.authMiddleware)(["admin", "super-admin"]), async (req, res) => {
     try {
         const { id } = req.params;
         if (!mongoose_1.default.Types.ObjectId.isValid(id)) {

@@ -476,7 +476,7 @@ app.post("/api/auth/refresh", (req, res) => {
 // ----------------- CREATE PRODUCT -----------------
 app.post(
   "/api/products",
-  authMiddleware(["admin"]),
+  authMiddleware(["admin", "super-admin"]),
   async (req: AuthRequest, res: Response) => {
     try {
       const {
@@ -906,7 +906,7 @@ app.get("/api/category-service", async (req, res) => {
 // ----------------- CREATE SERVICE -----------------
 app.post(
   "/api/services",
-  authMiddleware(["admin"]),
+  authMiddleware(["admin", "super-admin"]),
   async (req: AuthRequest, res: Response) => {
     try {
       const {
@@ -1015,7 +1015,7 @@ app.get("/api/services/:id", async (req, res) => {
 // ----------------- UPDATE SERVICE -----------------
 app.patch(
   "/api/services/:id",
-  authMiddleware(["admin"]),
+  authMiddleware(["admin", "super-admin"]),
   async (req: AuthRequest, res: Response) => {
     try {
       const { id } = req.params;
@@ -1045,7 +1045,7 @@ app.patch(
 // ----------------- DELETE SERVICE -----------------
 app.delete(
   "/api/services/:id",
-  authMiddleware(["admin"]),
+  authMiddleware(["admin", "super-admin"]),
   async (req: AuthRequest, res: Response) => {
     try {
       const { id } = req.params;
