@@ -1,5 +1,9 @@
-// models/Order.ts
-import mongoose, { Schema, Document, Model, Types } from "mongoose";
+import mongoose, {
+  Schema,
+  Document,
+  Model,
+  Types,
+} from "mongoose";
 
 export enum ShippingStage {
   PENDING = "PENDING",
@@ -16,64 +20,152 @@ export enum PaymentStatus {
   FAILED = "FAILED",
 }
 
-// Interface for Order document
-export interface IOrder extends Document {
-  userId: Types.ObjectId; // <-- ObjectId reference to User
+export enum OrderSource {
+  POS = "POS",
+  ONLINE = "ONLINE",
+}
+
+export interface IOrder
+  extends Document {
+  userId: Types.ObjectId;
+
   email?: string;
-  productDetails: Types.ObjectId[]; // <-- Array of ObjectId references to OrderProduct
+
+  productDetails: Types.ObjectId[];
+
   paymentMethod: string[];
+
   paymentStatus: PaymentStatus;
+
   shippingStage: ShippingStage;
+
+  source: OrderSource;
+
   totalAmount: number;
 
   fullName?: string;
+
   phone?: string;
+
   address?: string;
+
   county?: string;
+
   city?: string;
 
   mpesaCheckoutRequestId?: string;
+
   mpesaReceiptNumber?: string;
+
   mpesaPhoneNumber?: string;
 
   createdAt: Date;
+
   updatedAt: Date;
 }
 
-// Schema definition
-const orderSchema = new Schema<IOrder>(
-  {
-    userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    email: { type: String },
+const orderSchema =
+  new Schema<IOrder>(
+    {
+      userId: {
+        type: Schema.Types.ObjectId,
+        ref: "User",
+        required: true,
+      },
 
-    productDetails: [{ type: Schema.Types.ObjectId, ref: "OrderProduct" }],
+      email: {
+        type: String,
+      },
 
-    paymentMethod: { type: [String], default: [] },
-    paymentStatus: {
-      type: String,
-      enum: Object.values(PaymentStatus),
-      default: PaymentStatus.PENDING,
+      productDetails: [
+        {
+          type: Schema.Types.ObjectId,
+          ref: "OrderProduct",
+        },
+      ],
+
+      paymentMethod: {
+        type: [String],
+        default: [],
+      },
+
+      paymentStatus: {
+        type: String,
+        enum: Object.values(
+          PaymentStatus
+        ),
+        default:
+          PaymentStatus.PENDING,
+      },
+
+      shippingStage: {
+        type: String,
+        enum: Object.values(
+          ShippingStage
+        ),
+        default:
+          ShippingStage.PENDING,
+      },
+
+      source: {
+        type: String,
+        enum: Object.values(
+          OrderSource
+        ),
+        default:
+          OrderSource.ONLINE,
+      },
+
+      totalAmount: {
+        type: Number,
+        default: 0,
+      },
+
+      fullName: {
+        type: String,
+      },
+
+      phone: {
+        type: String,
+      },
+
+      address: {
+        type: String,
+      },
+
+      county: {
+        type: String,
+      },
+
+      city: {
+        type: String,
+      },
+
+      mpesaCheckoutRequestId: {
+        type: String,
+        unique: true,
+        sparse: true,
+      },
+
+      mpesaReceiptNumber: {
+        type: String,
+      },
+
+      mpesaPhoneNumber: {
+        type: String,
+      },
     },
-    shippingStage: {
-      type: String,
-      enum: Object.values(ShippingStage),
-      default: ShippingStage.PENDING,
-    },
-    totalAmount: { type: Number, default: 0 },
 
-    fullName: { type: String },
-    phone: { type: String },
-    address: { type: String },
-    county: { type: String },
-    city: { type: String },
+    {
+      timestamps: true,
+    }
+  );
 
-    mpesaCheckoutRequestId: { type: String, unique: true, sparse: true },
-    mpesaReceiptNumber: { type: String },
-    mpesaPhoneNumber: { type: String },
-  },
-  { timestamps: true }
-);
+const Order: Model<IOrder> =
+  mongoose.models.Order ||
+  mongoose.model<IOrder>(
+    "Order",
+    orderSchema
+  );
 
-// Create model
-const Order: Model<IOrder> = mongoose.models.Order || mongoose.model<IOrder>("Order", orderSchema);
 export default Order;

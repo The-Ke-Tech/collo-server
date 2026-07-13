@@ -71,6 +71,7 @@ const allowedOrigins = [
     "http://localhost:3000",
     "http://192.168.1.106:3000",
     "http://10.216.235.76:3000",
+    "http://192.168.10.115:3000",
     "http://192.168.0.103:3000",
     "https://www.colltechhub.com",
     "https://colltechhub.com",
@@ -1434,6 +1435,203 @@ app.get("/api/admin/orders", (0, middleware_1.authMiddleware)(["admin", "super-a
         res.status(500).json({ success: false, message: "Server error" });
     }
 });
+// =============================================
+// GET PAGINATED ORDERS
+// =============================================
+app.get("/api/admin/pos/orders", (0, middleware_1.authMiddleware)(["admin", "super-admin"]), async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const shipping = req.query.shipping;
+        const query = {};
+        // OPTIONAL SHIPPING FILTER
+        if (shipping) {
+            query.shippingStage = shipping;
+        }
+        // TOTAL ORDERS
+        const totalOrders = await order_model_1.default.countDocuments(query);
+        const totalPages = Math.ceil(totalOrders / limit);
+        // FETCH ORDERS
+        const orders = await order_model_1.default.find(query)
+            .populate({
+            path: "productDetails",
+            populate: {
+                path: "productId",
+                model: "Product",
+            },
+        })
+            .sort({ createdAt: -1 })
+            .skip((page - 1) * limit)
+            .limit(limit);
+        // MAP ORDERS
+        const mappedOrders = orders.map((o) => ({
+            id: o._id,
+            fullName: o.fullName || "Walk-in Customer",
+            totalAmount: o.totalAmount || 0,
+            shippingStage: o.shippingStage || "PENDING",
+            createdAt: o.createdAt,
+            address: o.address,
+            city: o.city,
+            county: o.county,
+            phone: o.phone,
+            paymentMethod: o.paymentMethod || "CASH",
+            paymentStatus: o.paymentStatus || "PENDING",
+            productDetails: o.productDetails?.map((op) => ({
+                id: op._id,
+                quantity: op.quantity || 0,
+                product: {
+                    id: op.productId?._id,
+                    productName: op.productId
+                        ?.productName ||
+                        "Unknown Product",
+                    sellingPrice: op.productId
+                        ?.sellingPrice ||
+                        0,
+                    productImage: op.productId
+                        ?.productImage ||
+                        "",
+                },
+            })) || [],
+        }));
+        // =============================================
+        // POS ORDERS ONLY
+        // =============================================
+        const posOrders = mappedOrders.filter((o) => o.fullName
+            ?.toLowerCase()
+            .includes("walk-in"));
+        // =============================================
+        // CONFIRMED ORDERS
+        // =============================================
+        const confirmedOrders = mappedOrders.filter((o) => o.paymentStatus
+            ?.toUpperCase() ===
+            "CONFIRMED");
+        // =============================================
+        // RESPONSE
+        // =============================================
+        res.json({
+            success: true,
+            allOrders: mappedOrders,
+            confirmedOrders,
+            posOrders,
+            totalOrders,
+            totalPages,
+            currentPage: page,
+        });
+    }
+    catch (err) {
+        console.error("ORDERS ERROR:", err);
+        res.status(500).json({
+            success: false,
+            message: "Server error",
+        });
+    }
+});
+// =============================================
+// POS REVENUE ENDPOINT
+// =============================================
+app.get("/api/admin/pos/revenue", (0, middleware_1.authMiddleware)(["admin", "super-admin"]), async (req, res) => {
+    try {
+        const range = req.query.range || "all";
+        // =============================================
+        // MATCH POS ORDERS ONLY
+        // =============================================
+        const match = {
+            paymentStatus: {
+                $regex: /^confirmed$/i,
+            },
+            fullName: {
+                $regex: /walk-in customer/i,
+            },
+        };
+        const now = new Date();
+        // =============================================
+        // DATE FILTERS
+        // =============================================
+        if (range === "daily") {
+            match.createdAt = {
+                $gte: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
+            };
+        }
+        else if (range === "weekly") {
+            const start = new Date();
+            start.setDate(now.getDate() - 7);
+            match.createdAt = {
+                $gte: start,
+            };
+        }
+        else if (range === "monthly") {
+            match.createdAt = {
+                $gte: new Date(now.getFullYear(), now.getMonth(), 1),
+            };
+        }
+        // =============================================
+        // DEBUGGING
+        // =============================================
+        console.log("POS MATCH:", match);
+        const totalPosOrders = await order_model_1.default.countDocuments(match);
+        console.log("POS ORDERS FOUND:", totalPosOrders);
+        // =============================================
+        // FETCH ORDERS
+        // =============================================
+        const orders = await order_model_1.default.find(match)
+            .sort({ createdAt: -1 });
+        // =============================================
+        // CALCULATIONS
+        // =============================================
+        let totalRevenue = 0;
+        const chartMap = {};
+        orders.forEach((order) => {
+            totalRevenue +=
+                order.totalAmount || 0;
+            const d = new Date(order.createdAt);
+            const key = range === "daily"
+                ? d.toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                })
+                : d.toLocaleDateString();
+            chartMap[key] =
+                (chartMap[key] || 0) +
+                    (order.totalAmount || 0);
+        });
+        // =============================================
+        // CHART DATA
+        // =============================================
+        const chartData = Object.keys(chartMap).map((date) => ({
+            date,
+            revenue: chartMap[date],
+        }));
+        // =============================================
+        // RESPONSE
+        // =============================================
+        res.json({
+            success: true,
+            totalRevenue,
+            totalTransactions: orders.length,
+            orders: orders.map((o) => ({
+                id: o._id,
+                fullName: o.fullName ||
+                    "Walk-in Customer",
+                totalAmount: o.totalAmount || 0,
+                paymentMethod: o.paymentMethod ||
+                    "CASH",
+                paymentStatus: o.paymentStatus ||
+                    "PENDING",
+                shippingStage: o.shippingStage ||
+                    "PENDING",
+                createdAt: o.createdAt,
+            })),
+            chartData,
+        });
+    }
+    catch (err) {
+        console.error("POS REVENUE ERROR:", err);
+        res.status(500).json({
+            success: false,
+            message: "Server error",
+        });
+    }
+});
 // Update order shipping stage
 app.patch("/api/admin/orders/:id/shipping", (0, middleware_1.authMiddleware)(["admin", "super-admin"]), async (req, res) => {
     try {
@@ -1547,6 +1745,157 @@ app.post("/api/webhook", async (req, res) => {
     catch (err) {
         console.error("Webhook error:", err);
         res.status(500).send("Server error");
+    }
+});
+/* =========================================
+   MANUAL POS SALE
+========================================= */
+app.post("/api/pos/manual-sale", (0, middleware_1.authMiddleware)([
+    "admin",
+    "super-admin",
+]), async (req, res) => {
+    const session = await mongoose_1.default.startSession();
+    session.startTransaction();
+    try {
+        const { customerName, phone, paymentMethod, totalAmount, county, city, address, items, } = req.body;
+        /* ================================
+           VALIDATIONS
+        ================================= */
+        if (!paymentMethod) {
+            return res.status(400).json({
+                error: "Payment method required",
+            });
+        }
+        if (paymentMethod !== "CASH" &&
+            paymentMethod !== "MPESA") {
+            return res.status(400).json({
+                error: "Invalid payment method",
+            });
+        }
+        if (!Array.isArray(items) ||
+            !items.length) {
+            return res.status(400).json({
+                error: "Cart is empty",
+            });
+        }
+        if (!totalAmount ||
+            totalAmount <= 0) {
+            return res.status(400).json({
+                error: "Invalid total amount",
+            });
+        }
+        /* ================================
+           VALIDATE STOCK + TOTALS
+        ================================= */
+        let calculatedTotal = 0;
+        for (const item of items) {
+            const product = await product_model_1.default.findById(item.productId).session(session);
+            if (!product) {
+                throw new Error("Product not found");
+            }
+            if (product.stock <
+                item.quantity) {
+                throw new Error(`${product.productName} has insufficient stock`);
+            }
+            if (product.sellingPrice == null) {
+                throw new Error(`Product ${product.productName} has no selling price`);
+            }
+            calculatedTotal +=
+                product.sellingPrice * item.quantity;
+        }
+        /* ================================
+           OPTIONAL TOTAL CHECK
+        ================================= */
+        if (Number(calculatedTotal) !==
+            Number(totalAmount)) {
+            return res.status(400).json({
+                error: "Total amount mismatch",
+            });
+        }
+        /* ================================
+           CREATE ORDER
+        ================================= */
+        const order = await order_model_1.default.create([
+            {
+                userId: new mongoose_1.default.Types.ObjectId(),
+                source: order_model_1.OrderSource.POS,
+                fullName: customerName?.trim() ||
+                    "Walk-in Customer",
+                phone: phone || "",
+                county: county ||
+                    "Nairobi",
+                city: city || "Nairobi",
+                address: address ||
+                    "Physical Store Purchase",
+                totalAmount,
+                paymentMethod: [
+                    paymentMethod,
+                ],
+                paymentStatus: order_model_1.PaymentStatus.CONFIRMED,
+                shippingStage: order_model_1.ShippingStage.DELIVERED,
+                productDetails: [],
+            },
+        ], { session });
+        const createdOrder = order[0];
+        /* ================================
+           CREATE ORDER PRODUCTS
+        ================================= */
+        for (const item of items) {
+            const product = await product_model_1.default.findById(item.productId).session(session);
+            if (!product)
+                continue;
+            /* CREATE ORDER ITEM */
+            const orderProduct = await orderProduct_model_1.default.create([
+                {
+                    orderId: createdOrder._id,
+                    productId: item.productId,
+                    quantity: item.quantity,
+                },
+            ], { session });
+            /* PUSH ORDER PRODUCT */
+            createdOrder.productDetails.push(orderProduct[0]
+                ._id);
+            /* REDUCE STOCK */
+            await product_model_1.default.findByIdAndUpdate(item.productId, {
+                $inc: {
+                    stock: -item.quantity,
+                },
+            }, { session });
+        }
+        /* ================================
+           SAVE ORDER
+        ================================= */
+        await createdOrder.save({
+            session,
+        });
+        /* ================================
+           COMMIT TRANSACTION
+        ================================= */
+        await session.commitTransaction();
+        session.endSession();
+        /* ================================
+           RESPONSE
+        ================================= */
+        return res.status(201).json({
+            success: true,
+            message: "Sale completed successfully",
+            orderId: createdOrder._id,
+            source: createdOrder.source,
+            paymentMethod,
+            paymentStatus: createdOrder.paymentStatus,
+            totalAmount: createdOrder.totalAmount,
+            createdAt: createdOrder.createdAt,
+        });
+    }
+    catch (err) {
+        await session.abortTransaction();
+        session.endSession();
+        console.error("Manual POS sale error:", err);
+        return res.status(500).json({
+            success: false,
+            error: err.message ||
+                "Failed to complete sale",
+        });
     }
 });
 /**

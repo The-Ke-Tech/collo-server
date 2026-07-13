@@ -33,8 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PaymentStatus = exports.ShippingStage = void 0;
-// models/Order.ts
+exports.OrderSource = exports.PaymentStatus = exports.ShippingStage = void 0;
 const mongoose_1 = __importStar(require("mongoose"));
 var ShippingStage;
 (function (ShippingStage) {
@@ -51,12 +50,30 @@ var PaymentStatus;
     PaymentStatus["CONFIRMED"] = "CONFIRMED";
     PaymentStatus["FAILED"] = "FAILED";
 })(PaymentStatus || (exports.PaymentStatus = PaymentStatus = {}));
-// Schema definition
+var OrderSource;
+(function (OrderSource) {
+    OrderSource["POS"] = "POS";
+    OrderSource["ONLINE"] = "ONLINE";
+})(OrderSource || (exports.OrderSource = OrderSource = {}));
 const orderSchema = new mongoose_1.Schema({
-    userId: { type: mongoose_1.Schema.Types.ObjectId, ref: "User", required: true },
-    email: { type: String },
-    productDetails: [{ type: mongoose_1.Schema.Types.ObjectId, ref: "OrderProduct" }],
-    paymentMethod: { type: [String], default: [] },
+    userId: {
+        type: mongoose_1.Schema.Types.ObjectId,
+        ref: "User",
+        required: true,
+    },
+    email: {
+        type: String,
+    },
+    productDetails: [
+        {
+            type: mongoose_1.Schema.Types.ObjectId,
+            ref: "OrderProduct",
+        },
+    ],
+    paymentMethod: {
+        type: [String],
+        default: [],
+    },
     paymentStatus: {
         type: String,
         enum: Object.values(PaymentStatus),
@@ -67,16 +84,44 @@ const orderSchema = new mongoose_1.Schema({
         enum: Object.values(ShippingStage),
         default: ShippingStage.PENDING,
     },
-    totalAmount: { type: Number, default: 0 },
-    fullName: { type: String },
-    phone: { type: String },
-    address: { type: String },
-    county: { type: String },
-    city: { type: String },
-    mpesaCheckoutRequestId: { type: String, unique: true, sparse: true },
-    mpesaReceiptNumber: { type: String },
-    mpesaPhoneNumber: { type: String },
-}, { timestamps: true });
-// Create model
-const Order = mongoose_1.default.models.Order || mongoose_1.default.model("Order", orderSchema);
+    source: {
+        type: String,
+        enum: Object.values(OrderSource),
+        default: OrderSource.ONLINE,
+    },
+    totalAmount: {
+        type: Number,
+        default: 0,
+    },
+    fullName: {
+        type: String,
+    },
+    phone: {
+        type: String,
+    },
+    address: {
+        type: String,
+    },
+    county: {
+        type: String,
+    },
+    city: {
+        type: String,
+    },
+    mpesaCheckoutRequestId: {
+        type: String,
+        unique: true,
+        sparse: true,
+    },
+    mpesaReceiptNumber: {
+        type: String,
+    },
+    mpesaPhoneNumber: {
+        type: String,
+    },
+}, {
+    timestamps: true,
+});
+const Order = mongoose_1.default.models.Order ||
+    mongoose_1.default.model("Order", orderSchema);
 exports.default = Order;
